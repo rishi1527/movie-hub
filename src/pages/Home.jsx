@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import HeroSlider from '../components/HeroSlider';
-import MoodDiscovery from '../components/MoodDiscovery';
+import MoodDiscovery, { MOODS } from '../components/MoodDiscovery';
 import MovieRow from '../components/MovieRow';
 import { HeroSkeleton, MovieRowSkeleton } from '../components/Skeletons';
 import {
@@ -9,9 +10,21 @@ import {
   getNowPlayingMovies,
   getTopRatedMovies,
   getPopularSeries,
+  getMoviesByMood,
 } from '../services/tmdbApi';
 
 const Home = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Active mood state - defaults to Comedy (matching user request) or query param
+  const initialMoodId = searchParams.get('mood') || 'comedy';
+  const [selectedMood, setSelectedMood] = useState(
+    () => MOODS.find((m) => m.id === initialMoodId) || MOODS[1] || MOODS[0]
+  );
+  const [moodMovies, setMoodMovies] = useState([]);
+  const [loadingMood, setLoadingMood] = useState(true);
+  const [highlightMoodRow, setHighlightMoodRow] = useState(false);
+
   const [heroData, setHeroData] = useState([]);
   const [trending, setTrending] = useState([]);
   const [popular, setPopular] = useState([]);
@@ -27,7 +40,66 @@ const Home = () => {
   const [loadingTopRated, setLoadingTopRated] = useState(true);
 
   const abortControllerRef = useRef(null);
+  const moodAbortRef = useRef(null);
+  const moodCacheRef = useRef({});
+  const moodRowRef = useRef(null);
 
+  // Synchronize with URL param if it changes externally
+  useEffect(() => {
+    const param = searchParams.get('mood');
+    if (param && param !== selectedMood.id) {
+      const match = MOODS.find((m) => m.id === param);
+      if (match) {
+        setSelectedMood(match);
+      }
+    }
+  }, [searchParams, selectedMood.id]);
+
+  // Fetch Mood Movies dynamically whenever selectedMood changes with client-side caching
+  useEffect(() => {
+    let isMounted = true;
+    const moodId = selectedMood.id;
+
+    // Fast-path: Check in-memory cache for instant switching with zero flicker
+    if (moodCacheRef.current[moodId] && moodCacheRef.current[moodId].length > 0) {
+      setMoodMovies(moodCacheRef.current[moodId]);
+      setLoadingMood(false);
+      return;
+    }
+
+    setLoadingMood(true);
+
+    if (moodAbortRef.current) {
+      moodAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    moodAbortRef.current = controller;
+
+    getMoviesByMood(moodId, 1, { signal: controller.signal })
+      .then((data) => {
+        if (!isMounted) return;
+        const validList = Array.isArray(data) ? data : [];
+        moodCacheRef.current[moodId] = validList;
+        setMoodMovies(validList);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.error(`Error fetching mood movies for ${moodId}:`, err);
+        if (isMounted) setMoodMovies([]);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingMood(false);
+      });
+
+    return () => {
+      isMounted = false;
+      if (moodAbortRef.current) {
+        moodAbortRef.current.abort();
+      }
+    };
+  }, [selectedMood.id]);
+
+  // Primary categories fetch (15 items each)
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
@@ -127,6 +199,23 @@ const Home = () => {
     };
   }, []);
 
+  // Handler when user clicks any mood button: stay on Home page and smoothly scroll to the mood row
+  const handleSelectMood = useCallback(
+    (mood) => {
+      setSelectedMood(mood);
+      setSearchParams({ mood: mood.id }, { replace: true });
+
+      setHighlightMoodRow(true);
+      setTimeout(() => {
+        moodRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+      setTimeout(() => {
+        setHighlightMoodRow(false);
+      }, 1500);
+    },
+    [setSearchParams]
+  );
+
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
       {/* 1. Hero Movie Slider (Top TMDB Blockbusters) */}
@@ -137,11 +226,14 @@ const Home = () => {
       ) : null}
 
       {/* 2. Mood-based Discovery Section ("What's Your Mood?") */}
-      <MoodDiscovery />
+      <MoodDiscovery
+        selectedMood={selectedMood}
+        onSelectMood={handleSelectMood}
+      />
 
       {/* 3. Horizontal Content Rows */}
       <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-        {/* Trending Movies */}
+        {/* Trending Movies (15 cards) */}
         {loadingTrending && trending.length === 0 ? (
           <MovieRowSkeleton count={6} />
         ) : trending.length > 0 ? (
@@ -154,7 +246,7 @@ const Home = () => {
           />
         ) : null}
 
-        {/* Popular Movies */}
+        {/* Popular Movies (15 cards) */}
         {loadingPopular && popular.length === 0 ? (
           <MovieRowSkeleton count={6} />
         ) : popular.length > 0 ? (
@@ -166,7 +258,34 @@ const Home = () => {
           />
         ) : null}
 
-        {/* Popular Web Series */}
+        {/* 🍿 Comedy Movies (or active selected mood) (15 cards) */}
+        <div
+          ref={moodRowRef}
+          id="mood-movies-row"
+          className={`scroll-mt-24 transition-all duration-500 rounded-2xl ${
+            highlightMoodRow
+              ? 'ring-2 ring-[#FF1A24]/50 bg-[#FF1A24]/5 shadow-lg shadow-[#FF1A24]/10 p-2 -m-2'
+              : ''
+          }`}
+        >
+          {loadingMood && moodMovies.length === 0 ? (
+            <MovieRowSkeleton count={6} />
+          ) : moodMovies.length > 0 ? (
+            <MovieRow
+              title={`${selectedMood.emoji || '🍿'} ${selectedMood.name} Movies`}
+              badge="MOOD"
+              subtitle={selectedMood.subtitle || `Top curated ${selectedMood.name.toLowerCase()} picks`}
+              movies={moodMovies}
+              seeAllLink={`/movies?mood=${selectedMood.id}`}
+            />
+          ) : !loadingMood ? (
+            <div className="glass-panel p-6 rounded-2xl text-center text-zinc-400 text-sm">
+              No {selectedMood.name.toLowerCase()} movies found at this moment.
+            </div>
+          ) : null}
+        </div>
+
+        {/* Popular Web Series (15 cards) */}
         {loadingSeries && series.length === 0 ? (
           <MovieRowSkeleton count={6} />
         ) : series.length > 0 ? (
@@ -179,7 +298,7 @@ const Home = () => {
           />
         ) : null}
 
-        {/* Latest Releases */}
+        {/* Latest Releases (15 cards) */}
         {loadingNowPlaying && nowPlaying.length === 0 ? (
           <MovieRowSkeleton count={6} />
         ) : nowPlaying.length > 0 ? (
@@ -192,7 +311,7 @@ const Home = () => {
           />
         ) : null}
 
-        {/* Top Rated */}
+        {/* Top Rated (15 cards) */}
         {loadingTopRated && topRated.length === 0 ? (
           <MovieRowSkeleton count={6} />
         ) : topRated.length > 0 ? (

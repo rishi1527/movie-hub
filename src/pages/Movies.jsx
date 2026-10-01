@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Film, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import MovieCard from '../components/MovieCard';
@@ -13,6 +13,8 @@ import {
   getUpcomingMovies,
   getMovieGenres,
   discoverMovies,
+  resolveGenreId,
+  MOOD_DEFINITIONS,
 } from '../services/tmdbApi';
 
 const Movies = () => {
@@ -21,11 +23,33 @@ const Movies = () => {
   // Genres fetched from TMDB
   const [genres, setGenres] = useState([]);
 
-  // Filter states derived from URL search parameters
-  const genreParam = searchParams.get('genre') || 'all';
+  // Filter states derived from URL search parameters (supporting both ?mood= and ?genre=)
+  const rawMoodParam = searchParams.get('mood');
+  const rawGenreParam = searchParams.get('genre');
+  const activeParam = rawGenreParam || rawMoodParam;
+  const resolvedGenreId = activeParam ? resolveGenreId(activeParam) : null;
+  const genreParam = resolvedGenreId ? String(resolvedGenreId) : (rawGenreParam || 'all');
   const yearParam = searchParams.get('year') || 'all';
   const ratingParam = searchParams.get('rating') || 'all';
   const sortParam = searchParams.get('sort') || 'popularity.desc';
+
+  // Identify active mood (if any) for custom OTT title and subtitle
+  const activeMood = useMemo(() => {
+    if (rawMoodParam) {
+      const match = MOOD_DEFINITIONS.find(
+        (m) =>
+          m.id.toLowerCase() === rawMoodParam.toLowerCase() ||
+          String(m.genreId) === String(resolvedGenreId)
+      );
+      if (match) return match;
+    }
+    if (resolvedGenreId) {
+      return (
+        MOOD_DEFINITIONS.find((m) => String(m.genreId) === String(resolvedGenreId)) || null
+      );
+    }
+    return null;
+  }, [rawMoodParam, resolvedGenreId]);
 
   // Filtered results state
   const [filteredMovies, setFilteredMovies] = useState([]);
@@ -48,7 +72,9 @@ const Movies = () => {
 
   // Check if any structured filter is active
   const hasActiveFilters =
+    Boolean(resolvedGenreId) ||
     genreParam !== 'all' ||
+    Boolean(rawMoodParam) ||
     yearParam !== 'all' ||
     ratingParam !== 'all' ||
     sortParam !== 'popularity.desc';
@@ -248,11 +274,13 @@ const Movies = () => {
                 <Film className="w-5 h-5" />
               </div>
               <span className="line-clamp-1">
-                {hasActiveFilters ? 'Filtered Catalog' : 'Movies'}
+                {activeMood ? `${activeMood.name} Movies` : hasActiveFilters ? 'Filtered Catalog' : 'Movies'}
               </span>
             </h1>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Discover popular blockbusters, theatrical releases, top rated masterpieces, and custom filtered titles.
+              {activeMood
+                ? `Curated ${activeMood.name.toLowerCase()} titles matching your mood.`
+                : 'Discover popular blockbusters, theatrical releases, top rated masterpieces, and custom filtered titles.'}
             </p>
           </div>
 
@@ -297,7 +325,7 @@ const Movies = () => {
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-[#FF1A24]" />
               <h2 className="text-base sm:text-lg font-bold text-white">
-                Filtered Movies ({filteredMovies.length})
+                {activeMood ? `${activeMood.name} Movies` : 'Filtered Movies'} ({filteredMovies.length})
               </h2>
             </div>
             {filteredMovies.length > 0 && (

@@ -10,6 +10,7 @@ import {
   ArrowDownUp,
 } from 'lucide-react';
 import Button from './Button';
+import { GENRE_MAP } from '../services/tmdbApi';
 
 /**
  * Sort options mapped to TMDB movie discover sort_by parameters
@@ -75,7 +76,9 @@ export const ActiveFilterChips = ({
   const activeGenreName = useMemo(() => {
     if (!selectedGenre || selectedGenre === 'all') return null;
     const found = genres.find((g) => String(g.id) === String(selectedGenre));
-    return found ? found.name : `Genre #${selectedGenre}`;
+    if (found) return found.name;
+    if (GENRE_MAP[selectedGenre]) return GENRE_MAP[selectedGenre];
+    return `Genre #${selectedGenre}`;
   }, [genres, selectedGenre]);
 
   const activeSortLabel = useMemo(() => {

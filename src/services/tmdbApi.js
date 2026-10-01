@@ -58,6 +58,81 @@ export const MOOD_GENRE_MAP = {
   'sci-fi': 878, // Science Fiction
 };
 
+// All 9 moods supported by CinePulse with their TMDB mappings
+export const MOOD_DEFINITIONS = [
+  { id: 'romantic', name: 'Romantic', genreId: 10749 },
+  { id: 'comedy', name: 'Comedy', genreId: 35 },
+  { id: 'action', name: 'Action', genreId: 28 },
+  { id: 'horror', name: 'Horror', genreId: 27 },
+  { id: 'emotional', name: 'Emotional', genreId: 18 },
+  { id: 'thriller', name: 'Thriller', genreId: 53 },
+  { id: 'mystery', name: 'Mystery', genreId: 9648 },
+  { id: 'fantasy', name: 'Fantasy', genreId: 14 },
+  { id: 'sci-fi', name: 'Sci-Fi', genreId: 878 },
+];
+
+// Comprehensive Mood & Genre Name to TMDB Genre ID resolver
+export const resolveGenreId = (input) => {
+  if (input === undefined || input === null || input === '' || input === 'all') {
+    return null;
+  }
+
+  // If already a numeric genre ID
+  const numId = Number(input);
+  if (!isNaN(numId) && numId > 0) {
+    return numId;
+  }
+
+  // Normalize string: lowercase, trimmed
+  const normalized = String(input).toLowerCase().trim();
+
+  // 1. Check MOOD_GENRE_MAP
+  if (MOOD_GENRE_MAP[normalized]) {
+    return MOOD_GENRE_MAP[normalized];
+  }
+
+  // 2. Common aliases and variations
+  const ALIAS_MAP = {
+    romance: 10749,
+    romantic: 10749,
+    drama: 18,
+    emotional: 18,
+    scifi: 878,
+    'sci-fi': 878,
+    'science-fiction': 878,
+    'science fiction': 878,
+    action: 28,
+    comedy: 35,
+    horror: 27,
+    thriller: 53,
+    mystery: 9648,
+    fantasy: 14,
+    adventure: 12,
+    animation: 16,
+    anime: 16,
+    crime: 80,
+    documentary: 99,
+    family: 10751,
+    history: 36,
+    music: 10402,
+    war: 10752,
+    western: 37,
+  };
+
+  if (ALIAS_MAP[normalized]) {
+    return ALIAS_MAP[normalized];
+  }
+
+  // 3. Match against standard GENRE_MAP
+  for (const [id, name] of Object.entries(GENRE_MAP)) {
+    if (name.toLowerCase() === normalized) {
+      return Number(id);
+    }
+  }
+
+  return null;
+};
+
 /**
  * Image URL Helpers with optimized default sizes (w1280 for backdrops, w500 for posters)
  */
@@ -321,10 +396,11 @@ export const getAnimeSeries = async (page = 1, options = {}) => {
 
 // 11. Movies by Genre ID (Discover) (15 live items)
 export const getMoviesByGenre = async (genreId, page = 1, options = {}) => {
+  const resolved = resolveGenreId(genreId) || genreId;
   return await fetch15TMDBItems(
     '/discover/movie',
     {
-      with_genres: genreId,
+      with_genres: resolved,
       sort_by: 'popularity.desc',
       page,
     },
@@ -334,7 +410,7 @@ export const getMoviesByGenre = async (genreId, page = 1, options = {}) => {
 
 // 12. Movies by Mood ID (15 live items)
 export const getMoviesByMood = async (moodId, page = 1, options = {}) => {
-  const genreId = MOOD_GENRE_MAP[moodId] || 28;
+  const genreId = resolveGenreId(moodId) || 28;
   return await getMoviesByGenre(genreId, page, options);
 };
 
@@ -417,10 +493,13 @@ export const discoverMovies = async (params = {}, options = {}) => {
       queryParams['vote_count.gte'] = params['vote_count.gte'];
     }
 
-    // Genre filter
-    const genre = params.with_genres || params.genre;
-    if (genre && genre !== 'all' && genre !== '') {
-      queryParams.with_genres = genre;
+    // Genre filter - automatically resolve human-readable genre/mood names to TMDB genre IDs
+    const rawGenre = params.with_genres || params.genre || params.mood;
+    if (rawGenre && rawGenre !== 'all' && rawGenre !== '') {
+      const resolvedGenreId = resolveGenreId(rawGenre);
+      if (resolvedGenreId) {
+        queryParams.with_genres = resolvedGenreId;
+      }
     }
 
     // Year filter (primary release year)
@@ -484,10 +563,13 @@ export const discoverTv = async (params = {}, options = {}) => {
       queryParams['vote_count.gte'] = params['vote_count.gte'];
     }
 
-    // Genre filter
-    const genre = params.with_genres || params.genre;
-    if (genre && genre !== 'all' && genre !== '') {
-      queryParams.with_genres = genre;
+    // Genre filter - automatically resolve human-readable genre/mood names to TMDB genre IDs
+    const rawGenre = params.with_genres || params.genre || params.mood;
+    if (rawGenre && rawGenre !== 'all' && rawGenre !== '') {
+      const resolvedGenreId = resolveGenreId(rawGenre);
+      if (resolvedGenreId) {
+        queryParams.with_genres = resolvedGenreId;
+      }
     }
 
     // First air date year filter for TV
@@ -550,6 +632,7 @@ export default {
   getTvGenres,
   getMoviesByGenre,
   getMoviesByMood,
+  resolveGenreId,
   discoverMovies,
   discoverTv,
   getPosterUrl,

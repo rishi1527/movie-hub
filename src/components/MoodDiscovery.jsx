@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, memo } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { useState, memo } from 'react';
 import {
   Heart,
   Smile,
@@ -10,81 +11,110 @@ import {
   Sparkles,
   Rocket,
 } from 'lucide-react';
-import { getMoviesByMood } from '../services/tmdbApi';
-import MovieRow from './MovieRow';
-import { MovieRowSkeleton } from './Skeletons';
 
-const MOODS = [
-  { id: 'romantic', name: 'Romantic', icon: Heart },
-  { id: 'comedy', name: 'Comedy', icon: Smile },
-  { id: 'action', name: 'Action', icon: Zap },
-  { id: 'horror', name: 'Horror', icon: Ghost },
-  { id: 'emotional', name: 'Emotional', icon: Eye },
-  { id: 'thriller', name: 'Thriller', icon: Flame },
-  { id: 'mystery', name: 'Mystery', icon: Search },
-  { id: 'fantasy', name: 'Fantasy', icon: Sparkles },
-  { id: 'sci-fi', name: 'Sci-Fi', icon: Rocket },
+/**
+ * Mood Definitions with icons, emojis, and OTT-style descriptions
+ */
+export const MOODS = [
+  {
+    id: 'romantic',
+    name: 'Romantic',
+    icon: Heart,
+    emoji: '❤️',
+    subtitle: 'Heartwarming romances & passionate love stories',
+  },
+  {
+    id: 'comedy',
+    name: 'Comedy',
+    icon: Smile,
+    emoji: '🍿',
+    subtitle: 'Feel-good laughs & top comedy hits',
+  },
+  {
+    id: 'action',
+    name: 'Action',
+    icon: Zap,
+    emoji: '💥',
+    subtitle: 'High-octane blockbusters & explosive thrills',
+  },
+  {
+    id: 'horror',
+    name: 'Horror',
+    icon: Ghost,
+    emoji: '👻',
+    subtitle: 'Chilling scares, dark suspense & paranormal frights',
+  },
+  {
+    id: 'emotional',
+    name: 'Emotional',
+    icon: Eye,
+    emoji: '🎭',
+    subtitle: 'Deeply moving dramas & profound human journeys',
+  },
+  {
+    id: 'thriller',
+    name: 'Thriller',
+    icon: Flame,
+    emoji: '🔥',
+    subtitle: 'Edge-of-your-seat suspense & psychological twists',
+  },
+  {
+    id: 'mystery',
+    name: 'Mystery',
+    icon: Search,
+    emoji: '🔍',
+    subtitle: 'Gripping whodunits & unsolved detective puzzles',
+  },
+  {
+    id: 'fantasy',
+    name: 'Fantasy',
+    icon: Sparkles,
+    emoji: '✨',
+    subtitle: 'Mythical realms, magic spells & legendary quests',
+  },
+  {
+    id: 'sci-fi',
+    name: 'Sci-Fi',
+    icon: Rocket,
+    emoji: '🚀',
+    subtitle: 'Mind-bending futures, space odysseys & sci-tech sagas',
+  },
 ];
 
 /**
- * Mood-based Movie & Series Discovery Component
- * Styled with compact professional OTT-style section heading and Navbar-matching mood buttons
+ * MoodDiscovery Component
+ * Renders the "What's Your Mood?" pill selector.
+ * Clicking a mood selects it on the Home Page and scrolls down to the mood row,
+ * without navigating away from the page.
  */
-const MoodDiscovery = () => {
-  const [selectedMood, setSelectedMood] = useState(MOODS[0]); // Default 'Romantic'
-  const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const abortControllerRef = useRef(null);
+const MoodDiscovery = ({ selectedMood, onSelectMood, className = '' }) => {
+  const [internalMood, setInternalMood] = useState(
+    MOODS.find((m) => m.id === 'comedy') || MOODS[0]
+  );
 
-  useEffect(() => {
-    let isMounted = true;
-    const moodId = selectedMood.id;
+  const activeMood = selectedMood || internalMood;
 
-    setLoading(true);
-
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+  const handleMoodClick = (mood) => {
+    if (onSelectMood) {
+      onSelectMood(mood);
+    } else {
+      setInternalMood(mood);
     }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    getMoviesByMood(moodId, 1, { signal: controller.signal })
-      .then((data) => {
-        if (!isMounted) return;
-        setMovies(Array.isArray(data) ? data : []);
-      })
-      .catch((error) => {
-        if (error.name === 'AbortError') return;
-        console.error('Error in MoodDiscovery TMDB fetch:', error);
-        if (isMounted) {
-          setMovies([]);
-        }
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [selectedMood]);
+  };
 
   return (
-    <div className="space-y-3 sm:space-y-3.5">
+    <section className={`space-y-3 sm:space-y-3.5 ${className}`} aria-label="Mood discovery">
       {/* Compact Mood Section Header */}
       <div className="space-y-0.5 px-1">
         <h2 className="text-base sm:text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2">
           <span>What&apos;s Your Mood?</span>
         </h2>
         <p className="text-xs sm:text-sm text-zinc-400 font-normal">
-          Pick a mood and discover something you&apos;ll love.
+          Pick a mood and discover curated movies tailored just for you.
         </p>
       </div>
 
-      {/* Mood Buttons matching Navbar Sign In Button Styling */}
+      {/* Mood Buttons Pill Container */}
       <div className="relative -mx-2 sm:-mx-0 px-2 sm:px-0">
         <div
           className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar sm:flex-wrap py-1 touch-pan-x"
@@ -92,52 +122,30 @@ const MoodDiscovery = () => {
           aria-label="Mood filter options"
         >
           {MOODS.map((mood) => {
-            const isSelected = selectedMood.id === mood.id;
-            const Icon = mood.icon;
+            const isSelected = activeMood.id === mood.id;
             return (
               <button
                 key={mood.id}
                 type="button"
                 role="tab"
                 aria-selected={isSelected}
-                onClick={() => setSelectedMood(mood)}
-                className={`glass-action-btn flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-full text-xs font-semibold transition-all duration-200 shrink-0 whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF1A24] cursor-pointer select-none ${
+                onClick={() => handleMoodClick(mood)}
+                className={`glass-action-btn flex items-center gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-full text-xs font-semibold transition-all duration-200 shrink-0 whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF1A24] cursor-pointer select-none ${
                   isSelected
-                    ? 'glass-nav-active text-[#FF1A24] border-[#FF1A24]/40 shadow-sm'
-                    : 'text-zinc-200 hover:text-[#FF1A24]'
+                    ? 'glass-nav-active text-[#FF1A24] border-[#FF1A24]/40 shadow-sm shadow-[#FF1A24]/20 scale-[1.03]'
+                    : 'text-zinc-200 hover:text-[#FF1A24] hover:border-white/20'
                 }`}
               >
-                <Icon
-                  className={`w-3.5 h-3.5 shrink-0 ${
-                    isSelected ? 'text-[#FF1A24]' : 'text-[#FF1A24]/90'
-                  }`}
-                />
+                <span className="text-sm leading-none shrink-0" role="img" aria-label={mood.name}>
+                  {mood.emoji}
+                </span>
                 <span className="whitespace-nowrap shrink-0">{mood.name}</span>
               </button>
             );
           })}
         </div>
       </div>
-
-      {/* Dynamically Filtered Movie Row */}
-      <div className="pt-1">
-        {loading ? (
-          <MovieRowSkeleton count={6} />
-        ) : movies.length > 0 ? (
-          <MovieRow
-            title={`${selectedMood.name} Picks`}
-            badge="MOOD"
-            subtitle={`Top curated titles for when you're feeling ${selectedMood.name.toLowerCase()}`}
-            movies={movies}
-            seeAllLink="/movies"
-          />
-        ) : (
-          <div className="glass-panel p-6 rounded-2xl text-center text-zinc-400 text-sm">
-            No {selectedMood.name.toLowerCase()} titles found at this moment.
-          </div>
-        )}
-      </div>
-    </div>
+    </section>
   );
 };
 
