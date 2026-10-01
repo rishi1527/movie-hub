@@ -26,8 +26,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Pure server-side API key injection (process.env.TMDB_API_KEY ONLY)
-  const apiKey = process.env.TMDB_API_KEY;
+  // Pure server-side API key injection (process.env.TMDB_API_KEY or process.env.VITE_TMDB_API_KEY)
+  const apiKey = process.env.TMDB_API_KEY || process.env.VITE_TMDB_API_KEY;
 
   if (!apiKey) {
     return res.status(500).json({
@@ -48,7 +48,8 @@ export default async function handler(req, res) {
     } else if (req.query && req.query.endpoint) {
       endpoint = String(req.query.endpoint);
     } else {
-      const parsedUrl = new URL(req.url, 'http://localhost');
+      const rawUrl = req.headers['x-matched-path'] || req.url || '';
+      const parsedUrl = new URL(rawUrl, 'http://localhost');
       if (parsedUrl.searchParams.has('path')) {
         endpoint = parsedUrl.searchParams.get('path');
       } else if (parsedUrl.searchParams.has('endpoint')) {
